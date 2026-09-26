@@ -5,6 +5,9 @@
 后端 **Python · FastAPI · SQLite**，前端**原生 HTML / CSS / JavaScript**（无框架、无构建步骤），
 一条 `docker compose up` 即完成依赖安装、数据库初始化与服务启动。
 
+启动后浏览器访问 **http://localhost:8000**（页面与全部 API 均在 8000 端口），
+交互式文档在 http://localhost:8000/docs。
+
 ---
 
 ## 它解决什么问题
@@ -21,7 +24,12 @@
 4. 对区间互相重叠、先后无法唯一判定的事件标出**时间歧义组**；
 5. 审计员**调整任一来源的偏差假设后即时重算**，观察冲突消失 / 转移 / 新冲突暴露的全过程；
 6. 对任一来源做**偏移敏感性扫描**：解析求出 gap 穿越 0 的临界 offset，把扫描范围切成
-   边状态稳定的连续区间，逐段重算并报告不可能边 / 冲突链相对当前结果的新增与消失。
+   边状态稳定的连续区间，逐段重算并报告不可能边 / 冲突链相对当前结果的新增与消失；
+7. 一键做**全局时序可行性联立**：每个事件在其闭区间内取一个真实时刻，全部"a 先于 b"
+   约束同时要求 t_b ≥ t_a，判断整批事件与约束是否存在一组自洽时刻（环允许同刻、但环内
+   区间须有公共交集）；可行时给出每个事件的最早可行时刻作为见证，无解时给出一条带
+   事件 ID、约束 ID 与两端冲突界限的矛盾路径——专门覆盖"每条边单独都可行、整条路径
+   联立后无解"的情况。
 
 ---
 
@@ -33,6 +41,9 @@
 docker compose up --build
 # 打开 http://localhost:8000
 ```
+
+即唯一所需的启动命令：自动构建镜像、安装依赖、初始化数据库并监听 **8000** 端口
+（页面 `http://localhost:8000/` 与 API `http://localhost:8000/api/...` 同端口）。
 
 容器启动时自动：
 
@@ -53,9 +64,10 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### 跑测试
 
 ```bash
-python tests/test_engine.py      # 纯标准库，覆盖时间解析 / 冲突 / 因果环 / 假设调整全流程
-python tests/test_scenarios.py   # 纯标准库，覆盖方案快照 CRUD / 对比差异（冲突/歧义/边/时间线逆序对）
-python tests/test_sensitivity.py # 纯标准库，覆盖偏移敏感性：临界点解析 / offset 抵消 / 区间差异 / 输入校验
+python tests/test_engine.py       # 纯标准库，覆盖时间解析 / 冲突 / 因果环 / 假设调整全流程
+python tests/test_scenarios.py    # 纯标准库，覆盖方案快照 CRUD / 对比差异（冲突/歧义/边/时间线逆序对）
+python tests/test_sensitivity.py  # 纯标准库，覆盖偏移敏感性：临界点解析 / offset 抵消 / 区间差异 / 输入校验
+python tests/test_feasibility.py  # 纯标准库，覆盖全局时序可行性：可行见证 / 单边矛盾 / 各边可行但整链无解 / 环无公共交集 / 5000 事件无递归 / 只读不改写
 ```
 
 ---
@@ -111,6 +123,29 @@ python tests/test_sensitivity.py # 纯标准库，覆盖偏移敏感性：临界
 上下界无效（下界 ≥ 上界 / 非数值 / 非有限值）返回 400，来源不存在返回 404；
 范围内无临界点时返回单一稳定区间并附明确提示；临界点过多（>24 个）时提示缩小范围，
 避免逐段重算拖慢交互。扫描会携带页面未保存的其它来源假设作为上下文。
+
+### 进一步：全局时序可行性（🧭）
+
+冲突链面板回答的是"哪些边不可能 / 是否存在反向证据"，而 🧭 **全局时序可行性**回答的是
+一个更严格的问题：**整批事件能否在各自时间区间内取到一组真实时刻，同时满足全部约束？**
+
+点右上 **🧭 全局时序可行性**（抽屉打开即自动求解，改了左栏假设后点"▶ 重新求解"）：
+
+- **口径**：沿用当前生效时钟假设（含未保存调整）；以**全量事件闭区间**与**全部有效约束**
+  （用户声明 + 同来源 source_order）联立，**不受页面筛选影响**；自环忽略、悬空约束已在
+  导入阶段拒绝。检查全程只读，不改写任何事件、约束或假设。
+- **模型**：事件 *i* 在闭区间 `[lo_i, hi_i]` 内取时刻 `t_i`；边 a→b 要求 `t_b ≥ t_a`
+  （环允许同刻）。最早可行时刻 `L_i = max(lo_j : j 沿约束可达 i)`，由
+  **SCC 缩点 + DAG 拓扑序最大值传播**求得（O(V+E)，Tarjan 与各 BFS 均为迭代实现，
+  5000 事件无递归栈溢出）；当且仅当所有 `L_i ≤ hi_i` 时可行，`(L_i)` 本身即见证。
+- **可行时**：绿色结论 + 每个事件的最早可行时刻（按时刻倒序，含区间位置、距上界余量、
+  是否被自身下界固定），可按 ID / 摘要 / 来源检索，点击任意行关闭抽屉并在主时间线定位。
+- **无解时**：红色结论 + 一条**矛盾路径**：起点事件的区间下界沿一串约束传递后，越过了
+  终点事件的区间上界。逐步展示每一跳的**约束 ID（# 数据库边编号）**、`gap` 区间、
+  该边**单独是否可行**（两端闭区间是否有同刻公共点）；并给出两端冲突界限与超出量。
+  这特别覆盖"**每一条边单独都可行（相邻区间相交），但整条路径 / 环联立后无解**"
+  （下界沿链累加越过远端上界；对环即"环内区间没有公共交集"）。
+- 同一时刻满足 `t_b ≥ t_a` 的**环**（环内区间有公共交集）判为可行，环内事件取同刻。
 
 ---
 
@@ -190,6 +225,10 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
 - **因果环**：在成立边上跑迭代版 Tarjan，任何非平凡强连通分量都是逻辑矛盾。
 - **歧义组**：跨来源、时间区间相交的事件用扫描线 + 并查集聚类，提示审计员需要更精确的时钟证据。
 - **事件可信度** = `0.6 × (5 / (5 + 区间半径)) + 0.4 × 来源可靠度`。
+- **全局时序可行性**（`/api/temporal-feasibility`）：把全部 `t_i ∈ [lo_i, hi_i]`
+  与全部边 `t_b ≥ t_a` 联立（环允许同刻），用 SCC 缩点 + DAG 拓扑序最大下界传播求每个事件的
+  最早可行时刻 `L_i = max(lo_j : j 可达 i)`；所有 `L_i ≤ hi_i` 等价于存在一组自洽时刻
+  （也等价于"每个环的环内区间都有公共交集"），否则给出下界越界的矛盾路径。
 
 所有推理每次都从原始观测时间戳出发重算，调整假设**无需迁移任何数据**；
 5000 事件规模下全量重算约 0.6 秒，页面输入做了 250 ms 防抖。
@@ -217,6 +256,10 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
 - **偏移敏感性扫描**（右上 📈）：选定来源扫描 offset 上下界，解析临界点切出边状态稳定的连续区间，
   逐段展示不可能边 / 冲突链相对当前结果的新增与消失（含签名）；点击区间段把其中点写入该来源
   未保存 offset 并即时重算时间线。
+- **全局时序可行性**（右上 🧭）：全量事件闭区间 × 全部有效约束联立（t_b≥t_a，环允许同刻），
+  不受筛选影响、只读不改写；可行时给出每个事件的最早可行时刻见证，无解时给出带事件 ID、
+  约束 ID 与两端冲突界限的矛盾路径（含"各边单独可行、整链无解 / 环无公共交集"情形），
+  点击路径事件定位主时间线。
 
 ---
 
@@ -227,6 +270,7 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
 | POST | `/api/import` | multipart 上传 JSON 文件 |
 | POST | `/api/import/raw` | 直接提交 JSON（便于 curl / 集成） |
 | POST | `/api/recompute` | 应用临时假设 + 筛选条件，返回完整推理结果 |
+| POST | `/api/temporal-feasibility` | 全局时序可行性：全量区间 × 全部约束联立（含未保存假设、忽略筛选、只读） |
 | POST | `/api/sources/assumptions` | 持久化审计员确认的偏差假设 |
 | GET | `/api/sources` | 来源列表（含生效值 / 已存值 / dirty 标记） |
 | DELETE | `/api/sources/{id}` | 删除来源（级联删除其事件与约束） |
@@ -270,6 +314,8 @@ curl 示例：
 ```bash
 curl -F "file=@examples/login-anomaly.json" http://localhost:8000/api/import
 curl -X POST http://localhost:8000/api/recompute -H 'Content-Type: application/json' \
+  -d '{"overrides":{"app-server":{"clock_offset":60}}}'
+curl -X POST http://localhost:8000/api/temporal-feasibility -H 'Content-Type: application/json' \
   -d '{"overrides":{"app-server":{"clock_offset":60}}}'
 curl -o audit_result.json http://localhost:8000/api/export
 ```
@@ -361,6 +407,65 @@ curl -o audit_result.json http://localhost:8000/api/export
 - 每段的 `impossible_edges` / `conflicts` 都是**该段相对当前结果**的差异（签名配对，形态同方案对比）；
 - `notice` 在"范围内无临界点 / 来源不参与跨来源约束边"时给出明确提示（此时返回单一稳定区间）。
 
+`/api/temporal-feasibility` 请求体（只接受 overrides，无筛选字段）：
+
+```json
+{"overrides": {"app-server": {"clock_offset": 60}, "mobile-app": {"clock_offset": -30}}}
+```
+
+可行响应（节选，`earliest_times` 覆盖全量事件）：
+
+```json
+{
+  "analysis_type": "global-temporal-feasibility",
+  "feasible": true,
+  "conclusion": "可行：8 个事件可在各自闭区间内取到一组时刻，同时满足全部 11 条 t_b≥t_a 约束（环允许同刻）。",
+  "scope": {"event_count": 8, "edge_count": 11, "self_loop_count": 0, "dangling_edge_count": 0,
+            "note": "全量事件闭区间 × 全部有效约束联立；忽略页面筛选；…"},
+  "stats": {"event_count": 8, "edge_count": 11, "pinned_to_lower_count": 6, "common_horizon": 100.3},
+  "earliest_times": [
+    {"id": "g3", "lo": 1789123399.7, "hi": 1789123400.3, "lo_text": "…", "hi_text": "…",
+     "earliest": 1789123399.7, "earliest_text": "2026-09-18T08:03:19.700Z",
+     "slack": 0.6, "slack_text": "600 ms", "pinned_to_lower": true,
+     "source_id": "gateway", "summary": "强制登出"}
+  ]
+}
+```
+
+无解响应（矛盾路径；`steps[].constraint_id` 为约束库内边 ID）：
+
+```json
+{
+  "feasible": false,
+  "conclusion": "不可行：约束路径 a ⇝ c（2 跳、3 个来源）要求时刻只增不减，…越过其闭区间上界。路径上每条边就两端区间而言都能取到同刻、单独可行，矛盾只在联立后暴露。",
+  "contradiction": {
+    "type": "path_no_common_intersection",   // impossible_edge | path_no_common_intersection | cycle_no_common_intersection
+    "in_cycle": false,
+    "event_path": ["a", "b", "c"],
+    "path_length_edges": 2,
+    "all_edges_individually_feasible": true,
+    "head_event": {"id": "a", "bound_role": "lower_bound_origin", "lo_text": "…T00:00:05.000Z"},
+    "tail_event": {"id": "c", "bound_role": "upper_bound_violated", "hi_text": "…T00:00:04.500Z"},
+    "conflicting_bounds": {
+      "lower_bound_event_id": "a", "lower_bound": 1767225605.0, "lower_bound_text": "…",
+      "upper_bound_event_id": "c", "upper_bound": 1767225604.5, "upper_bound_text": "…",
+      "excess": 0.5, "excess_text": "500 ms"},
+    "steps": [
+      {"position": 1, "constraint_id": 1, "from": "a", "to": "b", "kind": "causal",
+       "gap_lo": -2.0, "gap_hi": 2.0, "individually_feasible": true,
+       "shared_intersection": {"lo": 1767225605.0, "hi": 1767225606.0}},
+      {"position": 2, "constraint_id": 2, "from": "b", "to": "c", "kind": "causal",
+       "gap_lo": -3.0, "gap_hi": 0.5, "individually_feasible": true,
+       "shared_intersection": {"lo": 1767225604.0, "hi": 1767225604.5}}
+    ]
+  }
+}
+```
+
+- `type=impossible_edge`：路径仅 1 跳且该边两端闭区间无公共点（单条约束本身即不可能）；
+- `type=path_no_common_intersection` / `cycle_no_common_intersection`：各边可单独满足，
+  但下界沿路径传递后越过终点上界；后者表示该路径首尾还能闭合成环（环内区间无公共交集）。
+
 交互式文档：启动后访问 `http://localhost:8000/docs`。
 
 ---
@@ -370,19 +475,21 @@ curl -o audit_result.json http://localhost:8000/api/export
 ```
 .
 ├── app/
-│   ├── main.py          # FastAPI 路由：导入/假设/重算/筛选/约束/方案 CRUD/对比/敏感性扫描/导出/静态页
+│   ├── main.py          # FastAPI 路由：导入/假设/重算/筛选/约束/方案 CRUD/对比/敏感性/全局时序可行性/导出/静态页
 │   ├── engine.py        # 区间模型、边分类、约束传播、Tarjan 环、歧义聚类、稳定签名、导出
+│   ├── feasibility.py   # 全局时序可行性：SCC 缩点 + DAG 拓扑最大下界传播、最早可行见证、矛盾路径（迭代无递归）
 │   ├── scenarios.py     # 命名假设方案快照 CRUD、双方案重算差异（冲突/歧义/边/时间线/参数）
 │   ├── sensitivity.py   # 偏移敏感性：临界点解析求解、稳定区间切分、逐段重算与差异配对
 │   ├── importer.py      # 多别名宽松 JSON 规范化、幂等入库、来源时序边重建
 │   ├── db.py            # SQLite 连接、建表初始化（含 scenarios 表）
 │   ├── timeutil.py      # 多格式时间戳解析（秒/毫秒/微秒/纳秒、ISO、RFC2822）
 │   ├── sample.py        # 内置示例案件
-│   └── static/          # 原生前端 index.html / style.css / app.js / compare.js / sensitivity.js
+│   └── static/          # 原生前端 index.html / style.css / app.js / compare.js / sensitivity.js / feasibility.js
 ├── examples/login-anomaly.json
 ├── tests/test_engine.py      # 纯标准库测试（11 项）
 ├── tests/test_scenarios.py   # 方案快照与双方案对比测试（12 项）
 ├── tests/test_sensitivity.py # 偏移敏感性扫描测试（9 项）
+├── tests/test_feasibility.py # 全局时序可行性测试（15 项）
 ├── docker/entrypoint.sh # 启动钩子：初始化数据库后拉起 uvicorn
 ├── Dockerfile
 ├── docker-compose.yml

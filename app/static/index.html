@@ -22,6 +22,7 @@
     </label>
     <button class="btn" id="btn-compare">⚖ 方案对比</button>
     <button class="btn" id="btn-sensitivity">📈 偏移敏感性</button>
+    <button class="btn" id="btn-feasibility">🧭 全局时序可行性</button>
     <button class="btn" id="btn-export">⬇ 导出审计结果</button>
     <button class="btn ghost danger" id="btn-reset" title="清空全部数据与假设">清空数据</button>
   </div>
@@ -154,8 +155,28 @@
   </div>
 </div>
 
+<!-- 全局时序可行性抽屉 -->
+<div id="feas-overlay" class="overlay hidden" aria-hidden="true">
+  <div class="overlay-card feas-card">
+    <div class="overlay-head">
+      <h2>🧭 全局时序可行性</h2>
+      <p class="subtitle">沿用当前生效时钟假设（含未保存调整），以<b>全量事件闭区间</b>与<b>全部有效约束</b>
+        联立：每事件在其区间内取一个时刻，边 a→b 要求 t_b ≥ t_a；环允许同刻，但环内区间必须有公共交集。
+        本检查不受页面筛选影响、只读不写，不改写事件或假设。</p>
+      <div class="overlay-actions">
+        <button class="btn tiny primary" id="feas-run">▶ 重新求解</button>
+        <button class="btn tiny ghost" id="feas-close">✕ 关闭</button>
+      </div>
+    </div>
+
+    <div id="feas-hint" class="cmp-hint feas-hint-line"></div>
+    <div id="feas-result" class="cmp-result feas-result"></div>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 <script src="/static/compare.js"></script>
 <script src="/static/sensitivity.js"></script>
+<script src="/static/feasibility.js"></script>
 </body>
 </html>

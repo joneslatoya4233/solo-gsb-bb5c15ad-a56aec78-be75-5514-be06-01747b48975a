@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import engine, scenarios, sensitivity
+from . import engine, feasibility, scenarios, sensitivity
 from .db import db, init_db
 from .importer import import_payload, reset_all
 
@@ -20,7 +20,7 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(
     title="事件证据链审计台",
     description="导入多来源 JSON 事件记录，校正时钟偏差，重建可解释时间线并定位冲突链。",
-    version="1.2.0",
+    version="1.3.0",
 )
 
 
@@ -51,6 +51,11 @@ class RecomputeBody(BaseModel):
 
 class SaveAssumptionsBody(BaseModel):
     assumptions: dict[str, SourceAssumption]
+
+
+class TemporalFeasibilityBody(BaseModel):
+    # 只携带页面当前（含未保存）的来源假设；全量事件/约束与筛选无关
+    overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
 
 
 class ConstraintBody(BaseModel):
@@ -185,6 +190,20 @@ def _apply_filters(events: list[dict], body: RecomputeBody,
     if body.only_ambiguous:
         out = [e for e in out if e.get("ambiguity_group")]
     return out
+
+
+@app.post("/api/temporal-feasibility")
+def temporal_feasibility(body: TemporalFeasibilityBody) -> dict[str, Any]:
+    """全局时序可行性：全量事件闭区间 × 全部有效约束联立（t_b≥t_a）。
+
+    与 /api/recompute 共用“当前生效假设（含未保存调整）”口径，但不接受任何
+    筛选参数——始终基于全量事件与全部有效约束，只读重算，不写库。
+    可行时返回每个事件的最早可行时刻；无解时返回带事件 ID、约束 ID 与
+    两端冲突界限的矛盾路径。
+    """
+    overrides = {sid: v.model_dump(exclude_none=True)
+                 for sid, v in body.overrides.items()}
+    return feasibility.temporal_feasibility(overrides)
 
 
 @app.post("/api/sources/assumptions")

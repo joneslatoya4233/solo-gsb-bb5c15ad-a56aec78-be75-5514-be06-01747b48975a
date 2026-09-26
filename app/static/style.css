@@ -471,3 +471,92 @@ body {
 .sens-line.removed code { color: #8ce0b4; }
 .sens-line.none { color: var(--muted); }
 .sens-gap { color: var(--muted); font-family: var(--mono); font-size: 10.5px; }
+
+/* ---------------- 全局时序可行性抽屉 ---------------- */
+.feas-card { width: min(1060px, 100%); }
+.feas-hint-line { padding: 8px 18px 0; font-size: 12px; color: var(--warn); }
+.feas-note { font-size: 12px; color: var(--muted); margin-top: 7px; }
+.feas-note.warn { color: var(--warn); }
+
+.feas-verdict {
+  border-radius: 10px; padding: 12px 15px; font-size: 14px; font-weight: 600;
+  border: 1px solid;
+}
+.feas-verdict.ok {
+  background: rgba(57,192,122,.12); border-color: #2c5c44; color: #8ce0b4;
+}
+.feas-verdict.bad {
+  background: rgba(229,83,75,.12); border-color: #6b2f2c; color: #ff9b94;
+}
+
+.feas-search {
+  width: 100%; margin: 4px 0 10px; background: var(--bg-2);
+  border: 1px solid var(--line); border-radius: 7px; color: var(--text);
+  padding: 7px 11px; font-size: 12.5px;
+}
+.feas-search:focus { outline: none; border-color: var(--primary); }
+
+.feas-witness { display: flex; flex-direction: column; gap: 3px; max-height: 46vh; overflow-y: auto; }
+.feas-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 5px 8px; border-radius: 7px; font-size: 12px;
+  border: 1px solid transparent;
+}
+.feas-row:hover { background: var(--bg-3); border-color: var(--line); }
+.feas-node { cursor: pointer; flex: 0 0 auto; min-width: 92px; text-align: center; }
+.feas-time { font-family: var(--mono); color: #cfe2ff; flex: 0 0 104px; }
+.feas-range {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); font-family: var(--mono); font-size: 11px; flex: 1 1 240px;
+}
+.feas-bar {
+  position: relative; width: 130px; height: 5px; border-radius: 3px;
+  background: var(--bg-3); display: inline-block; color: var(--primary);
+}
+.feas-bar .feas-seg {
+  position: absolute; top: -2px; bottom: -2px; width: 4px; border-radius: 2px;
+  transform: translateX(-2px);
+}
+.feas-slack { color: #8ce0b4; font-size: 11px; flex: 0 0 auto; }
+.feas-pin {
+  font-size: 10px; padding: 1px 7px; border-radius: 9px;
+  background: rgba(74,158,255,.16); color: #8fc0ff; border: 1px solid #2b4a70;
+}
+.feas-sum { color: var(--muted); font-size: 11.5px; flex: 1 1 200px; }
+.feas-list-foot { padding: 7px 4px 2px; font-size: 11px; color: var(--muted); }
+
+/* 矛盾路径 */
+.feas-bounds {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 14px;
+}
+.feas-bound { display: flex; flex-direction: column; gap: 4px; }
+.feas-bound-tag { font-size: 10.5px; color: var(--muted); font-family: var(--mono); }
+.feas-bound b { font-family: var(--mono); font-size: 15px; }
+.feas-bound.from b { color: #cfe2ff; }
+.feas-bound.to b { color: #ff9b94; }
+.feas-bound .chain-node { align-self: flex-start; cursor: pointer; }
+.feas-bound-excess { color: var(--danger); font-size: 12px; margin-left: auto; }
+.feas-bound-excess b { font-family: var(--mono); }
+
+.feas-path {
+  display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap;
+  margin-top: 12px; padding: 12px 8px; overflow-x: auto;
+  background: var(--bg-2); border: 1px dashed var(--line); border-radius: 9px;
+}
+.feas-path-node { display: flex; flex-direction: column; align-items: center; gap: 5px; justify-content: center; }
+.feas-path-node .chain-node { cursor: pointer; font-size: 12.5px; }
+.feas-node-role { font-size: 10px; color: var(--muted); }
+.feas-step { display: flex; align-items: center; }
+.feas-edge {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 3px 9px; border-radius: 7px; border: 1px solid; cursor: help;
+  font-size: 10.5px; white-space: nowrap;
+}
+.feas-edge.ok { border-color: #2c5c44; background: rgba(57,192,122,.08); color: #8ce0b4; }
+.feas-edge.bad { border-color: #6b2f2c; background: rgba(229,83,75,.1); color: #ff9b94; }
+.feas-edge-id { font-family: var(--mono); }
+
+.feas-readonly {
+  font-size: 11px; color: var(--muted); text-align: center; padding: 4px 0 2px;
+}
