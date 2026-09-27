@@ -21,7 +21,10 @@
 4. 对区间互相重叠、先后无法唯一判定的事件标出**时间歧义组**；
 5. 审计员**调整任一来源的偏差假设后即时重算**，观察冲突消失 / 转移 / 新冲突暴露的全过程；
 6. 对任一来源做**偏移敏感性扫描**：解析求出 gap 穿越 0 的临界 offset，把扫描范围切成
-   边状态稳定的连续区间，逐段重算并报告不可能边 / 冲突链相对当前结果的新增与消失。
+   边状态稳定的连续区间，逐段重算并报告不可能边 / 冲突链相对当前结果的新增与消失；
+7. 一键**全局时序可行性检查**：把全部事件区间与全部有效约束联立求解（差分约束），
+   可行时给出每个事件的最早可行时刻作为见证，无解时给出一条带事件 ID、约束 ID 与
+   两端冲突界限的矛盾路径——包括"每条边单独可行、整条路径无解"的隐蔽情形。
 
 ---
 
@@ -29,10 +32,14 @@
 
 ### Docker Compose（推荐）
 
+**单条启动命令**（依赖安装、数据库初始化、示例载入全部在启动时自动完成）：
+
 ```bash
 docker compose up --build
-# 打开 http://localhost:8000
 ```
+
+- 页面：`http://localhost:8000`
+- API（含交互式文档）：`http://localhost:8000/api/...` 与 `http://localhost:8000/docs`
 
 容器启动时自动：
 
@@ -56,6 +63,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 python tests/test_engine.py      # 纯标准库，覆盖时间解析 / 冲突 / 因果环 / 假设调整全流程
 python tests/test_scenarios.py   # 纯标准库，覆盖方案快照 CRUD / 对比差异（冲突/歧义/边/时间线逆序对）
 python tests/test_sensitivity.py # 纯标准库，覆盖偏移敏感性：临界点解析 / offset 抵消 / 区间差异 / 输入校验
+python tests/test_feasibility.py # 纯标准库，覆盖全局时序可行性：DAG 传播 / 环交集 / 矛盾路径 / 5000 事件无递归
 ```
 
 ---
@@ -111,6 +119,28 @@ python tests/test_sensitivity.py # 纯标准库，覆盖偏移敏感性：临界
 上下界无效（下界 ≥ 上界 / 非数值 / 非有限值）返回 400，来源不存在返回 404；
 范围内无临界点时返回单一稳定区间并附明确提示；临界点过多（>24 个）时提示缩小范围，
 避免逐段重算拖慢交互。扫描会携带页面未保存的其它来源假设作为上下文。
+
+### 进一步：全局时序可行性检查（🧭）
+
+冲突定位回答"哪里矛盾"，全局时序可行性回答另一个更严格的问题：**在当前时钟假设下，
+能不能为每个事件各取一个闭区间内的时刻，使全部约束同时成立？** 点右上 **🧭 全局时序可行性**：
+
+1. 后端以页面当前（**含未保存调整**）的时钟假设，把**全部事件**的真实时间区间与
+   **全部有效约束**（含 source_order 时序边与不可能的边）联立成差分约束系统：
+   每个事件取闭区间内一个时刻，边 `a→b` 要求 `t_b ≥ t_a`（允许同刻）；
+   **不受页面筛选影响**，且为只读检查——不改写任何事件或假设；
+2. 求解用迭代版 Tarjan 强连通分量 + Kahn 拓扑最长路（全程无递归，5000 事件约 0.4 秒）：
+   环（非平凡分量）内事件必须取同一时刻，因此环可行 ⟺ 环内区间有公共交集；
+   每个事件的**最早可行时刻** = max(自身区间下界, 所有前驱的最早可行时刻)；
+3. **可行**：页面列出每个事件的最早可行时刻（即一组满足全部约束的具体取值，就是见证），
+   附区间余量与环标记，支持关键字过滤与分批展开，点击任意事件回到主时间线定位；
+4. **无解**：返回一条**矛盾路径**——从某事件的区间下界出发，下界沿路径逐段传递，
+   最终在终点事件处越过其区间上界。路径标注每个事件 ID、每条边的约束 ID、
+   该边单独是否可行，以及两端的冲突界限（起点下界 vs 终点上界）与超出量；
+   当路径上**每条边单独都可行**（典型：环内区间无公共交集、或长链下界累积）时，
+   页面会明确提示"各边单独可行而整条路径无解"，这类矛盾用逐边检查永远发现不了。
+
+调整假设后点抽屉内 **⟳ 重新检查** 即可用新假设重算；检查不会保存任何假设。
 
 ---
 
@@ -217,6 +247,9 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
 - **偏移敏感性扫描**（右上 📈）：选定来源扫描 offset 上下界，解析临界点切出边状态稳定的连续区间，
   逐段展示不可能边 / 冲突链相对当前结果的新增与消失（含签名）；点击区间段把其中点写入该来源
   未保存 offset 并即时重算时间线。
+- **全局时序可行性**（右上 🧭）：全部事件区间 × 全部有效约束联立求解；可行时展示每个事件的
+  最早可行时刻（见证，可过滤、可点击定位），无解时展示带事件 ID / 约束 ID / 两端冲突界限的
+  矛盾路径；使用当前含未保存调整的假设，不受筛选影响，只读不改写数据。
 
 ---
 
@@ -243,6 +276,7 @@ gap ∈ [ lo_b - hi_a ,  hi_b - lo_a ]
 | POST | `/api/compare` | 两套方案在同一批事件上分别重算，返回结构化差异 |
 | POST | `/api/compare/export` | 下载方案对比 JSON 证据包（侧引用可携带未保存 overrides，故为 POST） |
 | POST | `/api/offset-sensitivity` | 偏移敏感性扫描：解析临界点 → 稳定区间 → 逐段重算并与当前结果对比 |
+| POST | `/api/temporal-feasibility` | 全局时序可行性：全量事件区间 × 全部约束联立求解，返回最早可行时刻见证或矛盾路径 |
 | GET | `/api/sample` | 下载内置示例 JSON |
 | POST | `/api/reset` | 清空全部数据 |
 | GET | `/api/health` | 健康检查（Compose healthcheck 使用） |
@@ -361,6 +395,55 @@ curl -o audit_result.json http://localhost:8000/api/export
 - 每段的 `impossible_edges` / `conflicts` 都是**该段相对当前结果**的差异（签名配对，形态同方案对比）；
 - `notice` 在"范围内无临界点 / 来源不参与跨来源约束边"时给出明确提示（此时返回单一稳定区间）。
 
+`/api/temporal-feasibility` 请求体与响应示例（只接收 `overrides`，无筛选参数；只读）：
+
+```json
+// POST /api/temporal-feasibility —— overrides 传页面当前（含未保存）的时钟假设
+{"overrides": {"app-server": {"clock_offset": 50}, "mobile-app": {"clock_offset": -30}}}
+```
+
+```json
+// 可行：events 即见证——每个事件的最早可行时刻（落在各自闭区间内、满足全部约束）
+{
+  "check_type": "global-temporal-feasibility",
+  "feasible": true,
+  "summary": "当前时钟假设下全局时序可行：8 个事件与 11 条约束联立有解……",
+  "stats": {"event_count": 8, "constraint_count": 11, "skipped_constraints": 0,
+            "component_count": 8, "cycle_count": 0, "events_in_cycles": 0},
+  "events": [{"id": "g1", "source_id": "gateway", "earliest": 1789123299.7,
+              "earliest_text": "2026-09-18T08:01:39.700Z",
+              "lo": 1789123299.7, "hi": 1789123300.3, "slack": 0.6, "in_cycle": false}],
+  "overrides_applied": {"app-server": {"clock_offset": 50.0}, "...": "..."}
+}
+```
+
+```json
+// 无解：witness 为一条矛盾路径（事件 ID + 约束 ID + 两端冲突界限）
+{
+  "check_type": "global-temporal-feasibility",
+  "feasible": false,
+  "summary": "当前时钟假设下，全量事件区间与全部约束联立无解。",
+  "witness": {
+    "head": {"event": "a1", "bound": "lo", "value": 1789123369.0,
+             "text": "2026-09-18T08:02:49.000Z"},
+    "tail": {"event": "m1", "bound": "hi", "value": 1789123295.2,
+             "text": "2026-09-18T08:01:35.200Z"},
+    "overshoot": 73.8, "overshoot_text": "1.2 min",
+    "events": ["a1", "m1"],
+    "steps": [{"from": "a1", "to": "m1", "constraint_id": 8, "kind": "causal",
+               "individually_feasible": false, "running_lo": 1789123369.0}],
+    "all_edges_individually_feasible": false,
+    "explanation": "全局联立无解：从 a1 的区间下界 …… 超出其区间上界 ……"
+  }
+}
+```
+
+- `head` / `tail` 为路径两端的冲突界限：起点事件区间下界 > 终点事件区间上界；
+- `steps[].individually_feasible` 表示该边单独是否可行；全为 `true` 时即
+  "各边单独可行而整条路径无解"（环内区间无公共交集或长链下界累积），
+  `all_edges_individually_feasible` 与 `explanation` 会明确标出；
+- 环（因果环）内事件取同一时刻：可行时这些事件的 `earliest` 相同且 `in_cycle=true`。
+
 交互式文档：启动后访问 `http://localhost:8000/docs`。
 
 ---
@@ -370,19 +453,21 @@ curl -o audit_result.json http://localhost:8000/api/export
 ```
 .
 ├── app/
-│   ├── main.py          # FastAPI 路由：导入/假设/重算/筛选/约束/方案 CRUD/对比/敏感性扫描/导出/静态页
+│   ├── main.py          # FastAPI 路由：导入/假设/重算/筛选/约束/方案 CRUD/对比/敏感性/时序可行性/导出/静态页
 │   ├── engine.py        # 区间模型、边分类、约束传播、Tarjan 环、歧义聚类、稳定签名、导出
+│   ├── feasibility.py   # 全局时序可行性：差分约束联立求解（SCC + Kahn 最长路）、最早可行时刻见证、矛盾路径
 │   ├── scenarios.py     # 命名假设方案快照 CRUD、双方案重算差异（冲突/歧义/边/时间线/参数）
 │   ├── sensitivity.py   # 偏移敏感性：临界点解析求解、稳定区间切分、逐段重算与差异配对
 │   ├── importer.py      # 多别名宽松 JSON 规范化、幂等入库、来源时序边重建
 │   ├── db.py            # SQLite 连接、建表初始化（含 scenarios 表）
 │   ├── timeutil.py      # 多格式时间戳解析（秒/毫秒/微秒/纳秒、ISO、RFC2822）
 │   ├── sample.py        # 内置示例案件
-│   └── static/          # 原生前端 index.html / style.css / app.js / compare.js / sensitivity.js
+│   └── static/          # 原生前端 index.html / style.css / app.js / compare.js / sensitivity.js / feasibility.js
 ├── examples/login-anomaly.json
 ├── tests/test_engine.py      # 纯标准库测试（11 项）
 ├── tests/test_scenarios.py   # 方案快照与双方案对比测试（12 项）
 ├── tests/test_sensitivity.py # 偏移敏感性扫描测试（9 项）
+├── tests/test_feasibility.py # 全局时序可行性测试（11 项，含 5000 事件规模与深环无递归）
 ├── docker/entrypoint.sh # 启动钩子：初始化数据库后拉起 uvicorn
 ├── Dockerfile
 ├── docker-compose.yml

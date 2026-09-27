@@ -20,6 +20,7 @@
       <input type="file" id="file-input" accept=".json,application/json" hidden>
       ＋ 导入 JSON
     </label>
+    <button class="btn" id="btn-feasibility">🧭 全局时序可行性</button>
     <button class="btn" id="btn-compare">⚖ 方案对比</button>
     <button class="btn" id="btn-sensitivity">📈 偏移敏感性</button>
     <button class="btn" id="btn-export">⬇ 导出审计结果</button>
@@ -49,6 +50,8 @@
   <section class="panel col-timeline">
     <div class="panel-head wrap">
       <h2>重建时间线</h2>
+      <button class="btn tiny" id="btn-feasibility-2"
+        title="全部事件区间 × 全部有效约束联立求解（含未保存调整，不受筛选影响）">🧭 全局时序可行性</button>
       <div class="stats" id="stats"></div>
     </div>
 
@@ -154,8 +157,26 @@
   </div>
 </div>
 
+<!-- 全局时序可行性抽屉 -->
+<div id="feas-overlay" class="overlay hidden" aria-hidden="true">
+  <div class="overlay-card">
+    <div class="overlay-head">
+      <h2>🧭 全局时序可行性检查</h2>
+      <p class="subtitle">以当前（含未保存调整）的时钟假设，把<b>全部事件</b>的真实时间区间与<b>全部有效约束</b>联立求解：
+        每个事件取闭区间内一个时刻，边 a→b 要求 t_b ≥ t_a（环允许同刻，但环内区间必须有公共交集）。
+        不受页面筛选影响，只读检查，不改写任何事件或假设。</p>
+      <div class="overlay-actions">
+        <button class="btn tiny primary" id="feas-rerun">⟳ 重新检查</button>
+        <button class="btn tiny ghost" id="feas-close">✕ 关闭</button>
+      </div>
+    </div>
+    <div id="feas-result" class="cmp-result"></div>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 <script src="/static/compare.js"></script>
 <script src="/static/sensitivity.js"></script>
+<script src="/static/feasibility.js"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import engine, scenarios, sensitivity
+from . import engine, feasibility, scenarios, sensitivity
 from .db import db, init_db
 from .importer import import_payload, reset_all
 
@@ -20,7 +20,7 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(
     title="事件证据链审计台",
     description="导入多来源 JSON 事件记录，校正时钟偏差，重建可解释时间线并定位冲突链。",
-    version="1.2.0",
+    version="1.3.0",
 )
 
 
@@ -89,6 +89,11 @@ class SensitivityBody(BaseModel):
     source_id: str
     lo: Any = None                        # 扫描下界（秒），在 scan 内严格校验
     hi: Any = None                        # 扫描上界（秒）
+    overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
+
+
+class FeasibilityBody(BaseModel):
+    """全局时序可行性：只接收假设 overrides；不接受任何筛选参数（始终全量联立）。"""
     overrides: dict[str, SourceAssumption] = Field(default_factory=dict)
 
 
@@ -396,6 +401,24 @@ def offset_sensitivity(body: SensitivityBody) -> dict[str, Any]:
                                        overrides)
     except sensitivity.SensitivityError as exc:
         raise HTTPException(404 if "不存在" in str(exc) else 400, str(exc)) from exc
+
+
+# ----------------------------------------------------- 全局时序可行性
+
+@app.post("/api/temporal-feasibility")
+def temporal_feasibility(body: FeasibilityBody) -> dict[str, Any]:
+    """全量事件区间 × 全部有效约束联立求解（只读，不改写事件或假设）。
+
+    overrides 传页面当前（含未保存）的时钟假设；不接受筛选参数——
+    页面筛选只影响时间线展示，本检查始终对全量数据联立。
+    可行时返回每个事件的最早可行时刻（见证）；无解时返回一条带事件 ID、
+    约束 ID 与两端冲突界限的矛盾路径。
+    """
+    overrides = {sid: v.model_dump(exclude_none=True)
+                 for sid, v in body.overrides.items()}
+    result = feasibility.check_feasibility(overrides)
+    result["overrides_applied"] = overrides
+    return result
 
 
 # ----------------------------------------------------------------- 前端
